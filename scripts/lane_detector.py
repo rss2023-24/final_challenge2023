@@ -7,6 +7,7 @@ import cv2
 import matplotlib.pyplot as plt
 from matplotlib.colors import hsv_to_rgb
 
+# UNCOMMENT WHEN ON CAR
 #import rospy
 #from cv_bridge import CvBridge, CvBridgeError
 #from sensor_msgs.msg import Image
@@ -22,33 +23,33 @@ class ConeDetector():
     Subscribes to: /zed/zed_node/rgb/image_rect_color (Image) : the live RGB image from the onboard ZED camera.
     Publishes to: /relative_cone_px (ConeLocationPixel) : the coordinates of the cone in the image frame (units are pixels).
     """
-    # Color Segmentation 
-    LOWER_GRAY = (0, 210, 0) 
+    # Color Segmentation Params
+    LOWER_GRAY = (0, 170, 0) 
     UPPER_GRAY = (255, 270, 255)
 
-    PERCENT_TO_SHOW = 0.20
-    STARTING_PERCENT_FROM_TOP = 0.60
+    # Hough Transform Params
+    MIN_SLOPE = 0.21
 
-    # PERCENT_TO_SHOW = 0.35
-    # STARTING_PERCENT_FROM_TOP = 0.35
+
 
     def __init__(self):
         # toggle line follower
         self.LineFollower = False
 
+        # UNCOMMENT WHEN ON CAR
         # Subscribe to ZED camera RGB frames
         # self.cone_pub = rospy.Publisher("/relative_cone_px", ConeLocationPixel, queue_size=10)
         # self.debug_pub = rospy.Publisher("/cone_debug_img", Image, queue_size=10)
         # self.image_sub = rospy.Subscriber("/zed/zed_node/rgb/image_rect_color", Image, self.image_callback)
         # self.bridge = CvBridge() # Converts between ROS images and OpenCV Images
 
-    def debug_mask(self, original_image, blurred_image, masked_image, edge_image, trimmed_edge_image):
+    def debug_mask(self, original_image, blurred_image, masked_image, edge_image, triangle_mask, trimmed_edge_image, hough_image, average_hough_image):
         # Plot selected segmentation boundaries
         light_square = np.full((10, 10, 3), self.LOWER_GRAY, dtype=np.uint8) / 255.0
         dark_square = np.full((10, 10, 3), self.UPPER_GRAY, dtype=np.uint8) / 255.0
-        plt.subplot(3, 3, 1)
+        plt.subplot(4, 3, 1)
         plt.imshow(hsv_to_rgb(light_square))
-        plt.subplot(3, 3, 3)
+        plt.subplot(4, 3, 3)
         plt.imshow(hsv_to_rgb(dark_square))
         
         # Plot Images
@@ -56,18 +57,28 @@ class ConeDetector():
         blurred_rgb = cv2.cvtColor(blurred_image, cv2.COLOR_BGR2RGB)
         masked_rgb = cv2.cvtColor(masked_image, cv2.COLOR_BGR2RGB)
         edge_rgb = cv2.cvtColor(edge_image, cv2.COLOR_BGR2RGB)
+        triangle_rgb = cv2.cvtColor(triangle_mask, cv2.COLOR_BGR2RGB)
         trimmed_rgb = cv2.cvtColor(trimmed_edge_image, cv2.COLOR_BGR2RGB)
-        plt.subplot(3, 3, 4)
+        hough_rgb = cv2.cvtColor(hough_image, cv2.COLOR_BGR2RGB)
+        average_hough_rgb = cv2.cvtColor(average_hough_image, cv2.COLOR_BGR2RGB)
+        plt.subplot(4, 3, 4)
         plt.imshow(original_rgb)
-        plt.subplot(3, 3, 5)
+        plt.subplot(4, 3, 5)
         plt.imshow(blurred_rgb)
-        plt.subplot(3, 3, 6)
+        plt.subplot(4, 3, 6)
         plt.imshow(masked_rgb)
-        plt.subplot(3, 3, 7)
+        plt.subplot(4, 3, 7)
         plt.imshow(edge_image)
-        plt.subplot(3, 3, 8)
-        plt.imshow(edge_image)
+        plt.subplot(4, 3, 8)
+        plt.imshow(triangle_rgb)
+        plt.subplot(4, 3, 9)
+        plt.imshow(trimmed_rgb)
+        plt.subplot(4, 3, 10)
+        plt.imshow(hough_rgb)
+        plt.subplot(4, 3, 11)
+        plt.imshow(average_hough_rgb)
         plt.show()
+
 
     def process_image(self, img, template, debug=False):
         """
@@ -80,12 +91,13 @@ class ConeDetector():
                     (x1, y1) is the top left of the bbox and (x2, y2) is the bottom right of the bbox
         """
 
+        # Smooths image to reduce noise
         blurred_image = cv2.GaussianBlur(img,(5,5),20)
 
-        # Converts image to hls color space
+        # Converts image to hls color space (better for identifying white)
         hls_image = cv2.cvtColor(blurred_image, cv2.COLOR_BGR2HLS)
 
-        # Filters out colors within our segmentation  boundaries
+        # Filters out non-white colors
         mask = cv2.inRange(hls_image, self.LOWER_GRAY, self.UPPER_GRAY)
         masked_image = cv2.bitwise_and(img, img, mask=mask)
 
@@ -95,19 +107,84 @@ class ConeDetector():
         # Runs edge detection
         edge_image = cv2.Canny(gray_image, 100, 200)
 
-        # Cuts out triangle sector in center
-        height, width = edge_image.shape
-        triangle = np.array([
-                        [(100, height), (475, 325), (width, height)]
+        # Cuts out triangle in center
+        image_height, image_width = edge_image.shape
+        big_triangle = np.array([
+                        [(-400, image_height), (np.int32(image_width * 0.5), np.int32(image_height * 0.25)), (image_width+400, image_height)]
                         ])
-        mask = np.zeros_like(edge_image)
-        mask = cv2.fillPoly(mask, triangle, 255)
-        trimmed_edge_image = cv2.bitwise_and(edge_image, mask)
+        # small_triangle = np.array([
+        #                 [(135, image_height), (np.int32(image_width * 0.5), np.int32(image_height * 0.40)), (image_width - 135, image_height)]
+        #                 ]) # Might not need this part.  Will experiment without it
+        triangle_mask = np.zeros_like(edge_image)
+        triangle_mask = cv2.fillPoly(triangle_mask, big_triangle, 255)
+        # triangle_mask = cv2.fillPoly(triangle_mask, small_triangle, 0)
+        trimmed_edge_image = cv2.bitwise_and(edge_image, triangle_mask)
 
+        # Applies Hough Transform
+        lines = cv2.HoughLinesP(trimmed_edge_image, rho=2, theta=np.pi/180, threshold=100, minLineLength=110, maxLineGap=30)
+
+        if lines is None:
+            lines = []
+
+        # Visualizes Hough Transform Lines for debugging
+        if debug == True:
+            hough_image = trimmed_edge_image.copy()
+            hough_image = cv2.cvtColor(hough_image, cv2.COLOR_GRAY2BGR)
+            for line in lines:
+                x1, y1, x2, y2 = line[0]
+                slope = (y2 - y1) / (x2 - x1)
+                if slope < -self.MIN_SLOPE and (x1 + x2) / 2 < image_width / 2:
+                    cv2.line(hough_image, (x1, y1), (x2, y2), (255, 0, 255), 3)
+                elif slope > self.MIN_SLOPE:
+                    cv2.line(hough_image, (x1, y1), (x2, y2), (255, 255, 0), 3)
+
+        # Discards unlikely lines and sorts them
+        left_lines = []
+        right_lines = []
+        for line in lines:
+            x1, y1, x2, y2 = line.reshape(4)
+            parameters = np.polyfit((x1, x2), (y1, y2), 1)
+            # Only add negative slopes lines with a midpoint in the left of the image
+            if parameters[0] < -self.MIN_SLOPE and (x1 + x2) / 2 < image_width / 2:
+                left_lines.append(parameters)
+            # Only add positive slopes lines with a midpoint in the right of the image
+            elif parameters[0] > self.MIN_SLOPE:
+                right_lines.append(parameters)
+
+
+        # If no left line found, make a guess
+        if len(left_lines) == 0:
+            left_lines.append((-2.0,250))
+        # If no right line found, make a guess
+        if len(right_lines) == 0:
+            right_lines.append((2.0,-1000))
+
+        #finds average lanes
+        left_average_line = np.average(left_lines, axis=0)
+        right_average_line = np.average(right_lines, axis=0) 
+        print(left_average_line)
+        print("\n")
+        print(right_average_line)
+
+        # Visualize Average Lines for debugging
+        if debug == True:
+            average_hough_image = trimmed_edge_image.copy()
+            average_hough_image = cv2.cvtColor(average_hough_image, cv2.COLOR_GRAY2BGR)
+            intersection_x = int((right_average_line[1] - left_average_line[1]) / (left_average_line[0] - right_average_line[0]))
+            intersection_y = int((right_average_line[0]*left_average_line[1] - left_average_line[0]*right_average_line[1]) / (right_average_line[0] - left_average_line[0]))
+
+            left_y0 = image_height
+            left_x0 = int((left_y0 - left_average_line[1]) // left_average_line[0])
+
+            right_y0 = image_height
+            right_x0 = int((right_y0 - right_average_line[1]) // right_average_line[0])
+           
+            cv2.line(average_hough_image, (left_x0, left_y0), (intersection_x, intersection_y), (255, 0, 255), 3)
+            cv2.line(average_hough_image, (right_x0, right_y0), (intersection_x, intersection_y), (255, 255, 0), 3)
 
         # Displays visual representation of color segmentation process
         if debug==True:
-            self.debug_mask(img, blurred_image, masked_image, edge_image, trimmed_edge_image)
+            self.debug_mask(img, blurred_image, masked_image, edge_image, triangle_mask, trimmed_edge_image, hough_image, average_hough_image)
 
         # Return bounding box
         return None
@@ -127,21 +204,6 @@ class ConeDetector():
         #################################
 
         image = self.bridge.imgmsg_to_cv2(image_msg, "bgr8")
-
-        # Trims image
-        if self.LineFollower == True:
-            # Add strip of input image to it
-            height, width, _ = image.shape
-
-            # Create blank image
-            blank_image = np.zeros([height,width,3],dtype=np.uint8)
-
-            start_index = int(height * self.STARTING_PERCENT_FROM_TOP)
-            end_index = int(start_index + height * self.PERCENT_TO_SHOW)
-            blank_image[start_index: end_index, :] = image[start_index: end_index, :]
-
-            # Output line follower image
-            image = blank_image
 
         # Processes image
         bounding_box = self.process_image(image, ".",False)
@@ -167,8 +229,28 @@ class ConeDetector():
 
 if __name__ == '__main__':
     test = ConeDetector()
-    image = cv2.imread("../media/start_area.jpg")
+    # image = cv2.imread("../track_images/lane3/image14.png")
+    # ConeDetector.process_image(test, image, True, True)
+    # image = cv2.imread("../track_images/lane3/image48.png")
+    # ConeDetector.process_image(test, image, True, True)
+    # image = cv2.imread("../track_images/lane3/image3.png")
+    # ConeDetector.process_image(test, image, True, True)
+    # image = cv2.imread("../track_images/lane3/image10.png")
+    # ConeDetector.process_image(test, image, True, True)
+    # image = cv2.imread("../track_images/lane3/image53.png")
+    # ConeDetector.process_image(test, image, True, True)
+    # image = cv2.imread("../track_images/lane1/image7.png")
+    # ConeDetector.process_image(test, image, True, True)
+    # image = cv2.imread("../track_images/lane1/image13.png")
+    # ConeDetector.process_image(test, image, True, True)
+    # image = cv2.imread("../track_images/lane3/image20.png")
+    # ConeDetector.process_image(test, image, True, True)
+    image = cv2.imread("../track_images/lane3/image17.png")
     ConeDetector.process_image(test, image, True, True)
+    image = cv2.imread("../track_images/extra_tests/image1.png")
+    ConeDetector.process_image(test, image, True, True)
+
+    # UNCOMMENT WHEN ON CAR
     # try:
     #     rospy.init_node('ConeDetector', anonymous=True)
     #     ConeDetector()
