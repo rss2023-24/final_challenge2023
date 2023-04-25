@@ -157,7 +157,7 @@ class ConeDetector():
             left_lines.append((-2.0,250))
         # If no right line found, make a guess
         if len(right_lines) == 0:
-            right_lines.append((2.0,-1000))
+            right_lines.append((2.0,-1120))
 
         #finds average lanes
         left_average_line = np.average(left_lines, axis=0)
@@ -245,8 +245,8 @@ if __name__ == '__main__':
     # ConeDetector.process_image(test, image, True, True)
     # image = cv2.imread("../track_images/lane3/image20.png")
     # ConeDetector.process_image(test, image, True, True)
-    image = cv2.imread("../track_images/lane3/image17.png")
-    ConeDetector.process_image(test, image, True, True)
+    # image = cv2.imread("../track_images/lane3/image17.png")
+    # ConeDetector.process_image(test, image, True, True)
     image = cv2.imread("../track_images/extra_tests/image1.png")
     ConeDetector.process_image(test, image, True, True)
 
