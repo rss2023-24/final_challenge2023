@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 
 import numpy as np
-
-
 import cv2
 import matplotlib.pyplot as plt
 from matplotlib.colors import hsv_to_rgb
@@ -31,12 +29,8 @@ class ConeDetector():
     MIN_SLOPE = 0.25
     LOOKAHEAD_PERCENTAGE = 0.55 # % of screen where 0% is the top of the screen 
 
-
-
     def __init__(self):
-        # toggle line follower
-        self.LineFollower = False
-
+        pass
         # UNCOMMENT WHEN ON CAR
         # Subscribe to ZED camera RGB frames
         # self.cone_pub = rospy.Publisher("/relative_cone_px", ConeLocationPixel, queue_size=10)
@@ -126,7 +120,6 @@ class ConeDetector():
 
         # Applies Hough Transform
         lines = cv2.HoughLinesP(trimmed_edge_image, rho=2, theta=np.pi/180, threshold=100, minLineLength=110, maxLineGap=30)
-
         if lines is None:
             lines = []
 
@@ -156,19 +149,16 @@ class ConeDetector():
                 right_lines.append(parameters)
 
 
-        # If no left line found, make a guess
+        # If no left line found, make a guess that pulls the car to the left
         if len(left_lines) == 0:
             left_lines.append((-3.0,250))
-        # If no right line found, make a guess
+        # If no right line found, make a guess that pulls the car to the right
         if len(right_lines) == 0:
             right_lines.append((3.0,-1800))
 
         #finds average lanes
         left_average_line = np.average(left_lines, axis=0)
         right_average_line = np.average(right_lines, axis=0) 
-        print(left_average_line)
-        print("\n")
-        print(right_average_line)
 
         # Visualize Average Lines for debugging
         if debug == True:
@@ -219,47 +209,45 @@ class ConeDetector():
         image = self.bridge.imgmsg_to_cv2(image_msg, "bgr8")
 
         # Processes image
-        bounding_box = self.process_image(image, ".",False)
-        
-        bottom_center = ((bounding_box[0][0] + bounding_box[1][0]) / 2, bounding_box[1][1])
+        tracking_point = self.process_image(image, ".",False)
         
         # Creates message
-        if bounding_box == ((0,0), (0,0)):
+        if tracking_point == (0,0):
             rospy.loginfo("Error: Cone not detected")
         else:
             relative_cone_px = ConeLocationPixel()
-            relative_cone_px.u = bottom_center[0]
-            relative_cone_px.v = bottom_center[1]
+            relative_cone_px.u = tracking_point[0]
+            relative_cone_px.v = tracking_point[1]
 
             # Publishes point
             self.cone_pub.publish(relative_cone_px)
 
         # Debug
-        cv2.rectangle(image,bounding_box[0],bounding_box[1],(0,255,0),2)
+        cv2.circle(image, tracking_point, 15, (255, 0, 255), -1)
         debug_msg = self.bridge.cv2_to_imgmsg(image, "bgr8")
         self.debug_pub.publish(debug_msg)
 
 
 if __name__ == '__main__':
     test = ConeDetector()
-    # image = cv2.imread("../track_images/lane3/image14.png")
-    # ConeDetector.process_image(test, image, True, True)
-    # image = cv2.imread("../track_images/lane3/image48.png")
-    # ConeDetector.process_image(test, image, True, True)
-    # image = cv2.imread("../track_images/lane3/image3.png")
-    # ConeDetector.process_image(test, image, True, True)
-    # image = cv2.imread("../track_images/lane3/image10.png")
-    # ConeDetector.process_image(test, image, True, True)
-    # image = cv2.imread("../track_images/lane3/image53.png")
-    # ConeDetector.process_image(test, image, True, True)
-    # image = cv2.imread("../track_images/lane1/image7.png")
-    # ConeDetector.process_image(test, image, True, True)
-    # image = cv2.imread("../track_images/lane1/image13.png")
-    # ConeDetector.process_image(test, image, True, True)
-    # image = cv2.imread("../track_images/lane3/image20.png")
-    # ConeDetector.process_image(test, image, True, True)
-    # image = cv2.imread("../track_images/lane3/image17.png")
-    # ConeDetector.process_image(test, image, True, True)
+    image = cv2.imread("../track_images/lane3/image14.png")
+    ConeDetector.process_image(test, image, True, True)
+    image = cv2.imread("../track_images/lane3/image48.png")
+    ConeDetector.process_image(test, image, True, True)
+    image = cv2.imread("../track_images/lane3/image3.png")
+    ConeDetector.process_image(test, image, True, True)
+    image = cv2.imread("../track_images/lane3/image10.png")
+    ConeDetector.process_image(test, image, True, True)
+    image = cv2.imread("../track_images/lane3/image53.png")
+    ConeDetector.process_image(test, image, True, True)
+    image = cv2.imread("../track_images/lane1/image7.png")
+    ConeDetector.process_image(test, image, True, True)
+    image = cv2.imread("../track_images/lane1/image13.png")
+    ConeDetector.process_image(test, image, True, True)
+    image = cv2.imread("../track_images/lane3/image20.png")
+    ConeDetector.process_image(test, image, True, True)
+    image = cv2.imread("../track_images/lane3/image17.png")
+    ConeDetector.process_image(test, image, True, True)
     image = cv2.imread("../track_images/extra_tests/image1.png")
     ConeDetector.process_image(test, image, True, True)
 
