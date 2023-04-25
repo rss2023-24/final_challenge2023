@@ -28,7 +28,8 @@ class ConeDetector():
     UPPER_GRAY = (255, 270, 255)
 
     # Hough Transform Params
-    MIN_SLOPE = 0.21
+    MIN_SLOPE = 0.25
+    LOOKAHEAD_PERCENTAGE = 0.55 # % of screen where 0% is the top of the screen 
 
 
 
@@ -43,7 +44,7 @@ class ConeDetector():
         # self.image_sub = rospy.Subscriber("/zed/zed_node/rgb/image_rect_color", Image, self.image_callback)
         # self.bridge = CvBridge() # Converts between ROS images and OpenCV Images
 
-    def debug_mask(self, original_image, blurred_image, masked_image, edge_image, triangle_mask, trimmed_edge_image, hough_image, average_hough_image):
+    def debug_mask(self, original_image, blurred_image, masked_image, edge_image, triangle_mask, trimmed_edge_image, hough_image, average_hough_image, output_image):
         # Plot selected segmentation boundaries
         light_square = np.full((10, 10, 3), self.LOWER_GRAY, dtype=np.uint8) / 255.0
         dark_square = np.full((10, 10, 3), self.UPPER_GRAY, dtype=np.uint8) / 255.0
@@ -61,6 +62,7 @@ class ConeDetector():
         trimmed_rgb = cv2.cvtColor(trimmed_edge_image, cv2.COLOR_BGR2RGB)
         hough_rgb = cv2.cvtColor(hough_image, cv2.COLOR_BGR2RGB)
         average_hough_rgb = cv2.cvtColor(average_hough_image, cv2.COLOR_BGR2RGB)
+        output_rgb = cv2.cvtColor(output_image, cv2.COLOR_BGR2RGB)
         plt.subplot(4, 3, 4)
         plt.imshow(original_rgb)
         plt.subplot(4, 3, 5)
@@ -77,6 +79,8 @@ class ConeDetector():
         plt.imshow(hough_rgb)
         plt.subplot(4, 3, 11)
         plt.imshow(average_hough_rgb)
+        plt.subplot(4, 3, 12)
+        plt.imshow(output_rgb)
         plt.show()
 
 
@@ -117,7 +121,7 @@ class ConeDetector():
         #                 ]) # Might not need this part.  Will experiment without it
         triangle_mask = np.zeros_like(edge_image)
         triangle_mask = cv2.fillPoly(triangle_mask, big_triangle, 255)
-        # triangle_mask = cv2.fillPoly(triangle_mask, small_triangle, 0)
+        # triangle_mask = cv2.fillPoly(triangle_mask, small_triangle, 0) # Might not need this part.  Will experiment without it
         trimmed_edge_image = cv2.bitwise_and(edge_image, triangle_mask)
 
         # Applies Hough Transform
@@ -154,10 +158,10 @@ class ConeDetector():
 
         # If no left line found, make a guess
         if len(left_lines) == 0:
-            left_lines.append((-2.0,250))
+            left_lines.append((-3.0,250))
         # If no right line found, make a guess
         if len(right_lines) == 0:
-            right_lines.append((2.0,-1120))
+            right_lines.append((3.0,-1800))
 
         #finds average lanes
         left_average_line = np.average(left_lines, axis=0)
@@ -182,12 +186,21 @@ class ConeDetector():
             cv2.line(average_hough_image, (left_x0, left_y0), (intersection_x, intersection_y), (255, 0, 255), 3)
             cv2.line(average_hough_image, (right_x0, right_y0), (intersection_x, intersection_y), (255, 255, 0), 3)
 
+        # Finds points to track
+        tracking_x = int((right_average_line[1] - left_average_line[1]) / (left_average_line[0] - right_average_line[0])) # Vanishing Point Intersection of the lanes
+        tracking_y = int(image_height * self.LOOKAHEAD_PERCENTAGE) 
+
+        # Displays tracking point
+        if debug == True:
+            output_image = average_hough_image.copy()
+            cv2.circle(output_image, (tracking_x, tracking_y), 15, (255, 0, 255), -1)
+
         # Displays visual representation of color segmentation process
         if debug==True:
-            self.debug_mask(img, blurred_image, masked_image, edge_image, triangle_mask, trimmed_edge_image, hough_image, average_hough_image)
+            self.debug_mask(img, blurred_image, masked_image, edge_image, triangle_mask, trimmed_edge_image, hough_image, average_hough_image, output_image)
 
-        # Return bounding box
-        return None
+        # Return point to track
+        return (tracking_x, tracking_y)
 
     def image_callback(self, image_msg):
         # Apply your imported color segmentation function (cd_color_segmentation) to the image msg here
