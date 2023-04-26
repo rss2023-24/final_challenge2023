@@ -6,11 +6,11 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import hsv_to_rgb
 
 # UNCOMMENT WHEN ON CAR
-#import rospy
-#from cv_bridge import CvBridge, CvBridgeError
-#from sensor_msgs.msg import Image
-#from geometry_msgs.msg import Point #geometry_msgs not in CMake file
-#from visual_servoing.msg import ConeLocationPixel
+import rospy
+from cv_bridge import CvBridge, CvBridgeError
+from sensor_msgs.msg import Image
+from geometry_msgs.msg import Point #geometry_msgs not in CMake file
+from visual_servoing.msg import ConeLocationPixel
 
 import matplotlib.pyplot as plt
 
@@ -21,22 +21,29 @@ class ConeDetector():
     Subscribes to: /zed/zed_node/rgb/image_rect_color (Image) : the live RGB image from the onboard ZED camera.
     Publishes to: /relative_cone_px (ConeLocationPixel) : the coordinates of the cone in the image frame (units are pixels).
     """
+    # -=-=-=-=-=-=-=-=-=--=-=--=--=--=--=
+    # -=-=-==-==-=- Params -=--=-=--=--=-
+    # -=-=-=-=-=-=-=-=-=--=-=--=--=--=--=
+
     # Color Segmentation Params
     LOWER_GRAY = (0, 170, 0) 
     UPPER_GRAY = (255, 270, 255)
 
     # Hough Transform Params
+    # Decrease this to find more horizontal lines
     MIN_SLOPE = 0.25
-    LOOKAHEAD_PERCENTAGE = 0.55 # % of screen where 0% is the top of the screen 
+
+    # % of screen where 0% is the top of the screen 
+    # Decrease this to move the tracking dot higher
+    LOOKAHEAD_PERCENTAGE = 0.55
 
     def __init__(self):
-        pass
         # UNCOMMENT WHEN ON CAR
         # Subscribe to ZED camera RGB frames
-        # self.cone_pub = rospy.Publisher("/relative_cone_px", ConeLocationPixel, queue_size=10)
-        # self.debug_pub = rospy.Publisher("/cone_debug_img", Image, queue_size=10)
-        # self.image_sub = rospy.Subscriber("/zed/zed_node/rgb/image_rect_color", Image, self.image_callback)
-        # self.bridge = CvBridge() # Converts between ROS images and OpenCV Images
+        self.cone_pub = rospy.Publisher("/relative_cone_px", ConeLocationPixel, queue_size=10)
+        self.debug_pub = rospy.Publisher("/cone_debug_img", Image, queue_size=10)
+        self.image_sub = rospy.Subscriber("/zed/zed_node/rgb/image_rect_color", Image, self.image_callback)
+        self.bridge = CvBridge() # Converts between ROS images and OpenCV Images
 
     def debug_mask(self, original_image, blurred_image, masked_image, edge_image, triangle_mask, trimmed_edge_image, hough_image, average_hough_image, output_image):
         # Plot selected segmentation boundaries
@@ -243,27 +250,27 @@ class ConeDetector():
 
 if __name__ == '__main__':
     # UNCOMMENT FOR LOCAL TESTING
-    test = ConeDetector()
-    image = cv2.imread("../track_images/lane3/image14.png")
-    ConeDetector.process_image(test, image, True, True)
-    image = cv2.imread("../track_images/lane3/image48.png")
-    ConeDetector.process_image(test, image, True, True)
-    image = cv2.imread("../track_images/lane3/image3.png")
-    ConeDetector.process_image(test, image, True, True)
-    image = cv2.imread("../track_images/lane3/image10.png")
-    ConeDetector.process_image(test, image, True, True)
-    image = cv2.imread("../track_images/lane3/image53.png")
-    ConeDetector.process_image(test, image, True, True)
-    image = cv2.imread("../track_images/lane1/image7.png")
-    ConeDetector.process_image(test, image, True, True)
-    image = cv2.imread("../track_images/lane1/image13.png")
-    ConeDetector.process_image(test, image, True, True)
-    image = cv2.imread("../track_images/lane3/image20.png")
-    ConeDetector.process_image(test, image, True, True)
-    image = cv2.imread("../track_images/lane3/image17.png")
-    ConeDetector.process_image(test, image, True, True)
-    image = cv2.imread("../track_images/extra_tests/image1.png")
-    ConeDetector.process_image(test, image, True, True)
+    # test = ConeDetector()
+    # image = cv2.imread("../track_images/lane3/image14.png")
+    # ConeDetector.process_image(test, image, True, False, True)
+    # image = cv2.imread("../track_images/lane3/image48.png")
+    # ConeDetector.process_image(test, image, True, True, True)
+    # image = cv2.imread("../track_images/lane3/image3.png")
+    # ConeDetector.process_image(test, image, True, True, True)
+    # image = cv2.imread("../track_images/lane3/image10.png")
+    # ConeDetector.process_image(test, image, True, True, True)
+    # image = cv2.imread("../track_images/lane3/image53.png")
+    # ConeDetector.process_image(test, image, True, True, True)
+    # image = cv2.imread("../track_images/lane1/image7.png")
+    # ConeDetector.process_image(test, image, True, True, True)
+    # image = cv2.imread("../track_images/lane1/image13.png")
+    # ConeDetector.process_image(test, image, True, True, True)
+    # image = cv2.imread("../track_images/lane3/image20.png")
+    # ConeDetector.process_image(test, image, True, True, True)
+    # image = cv2.imread("../track_images/lane3/image17.png")
+    # ConeDetector.process_image(test, image, True, True, True)
+    # image = cv2.imread("../track_images/extra_tests/image1.png")
+    # ConeDetector.process_image(test, image, True, True, True)
 
     # UNCOMMENT WHEN ON CAR
     # try:
