@@ -78,7 +78,9 @@ class ConeDetector():
         plt.show()
 
 
-    def process_image(self, img, template, debug=False):
+    # Visualize: Publish average lines to camera graph for real-time visualization (time-cost: small)
+    # Debug: Visualize entire image processing process (time-cost: high)
+    def process_image(self, img, template, visualize=True, debug=False):
         """
         Implement the cone detection using color segmentation algorithm
         Input:
@@ -161,17 +163,25 @@ class ConeDetector():
         right_average_line = np.average(right_lines, axis=0) 
 
         # Visualize Average Lines for debugging
-        if debug == True:
-            average_hough_image = trimmed_edge_image.copy()
-            average_hough_image = cv2.cvtColor(average_hough_image, cv2.COLOR_GRAY2BGR)
+        left_x0 = 0 
+        left_y0 = 0
+        right_x0 = 0 
+        right_y0 = 0
+        intersection_x = 0
+        intersection_y = 0
+
+        if visualize or debug:
             intersection_x = int((right_average_line[1] - left_average_line[1]) / (left_average_line[0] - right_average_line[0]))
             intersection_y = int((right_average_line[0]*left_average_line[1] - left_average_line[0]*right_average_line[1]) / (right_average_line[0] - left_average_line[0]))
 
             left_y0 = image_height
             left_x0 = int((left_y0 - left_average_line[1]) // left_average_line[0])
-
             right_y0 = image_height
             right_x0 = int((right_y0 - right_average_line[1]) // right_average_line[0])
+
+        if debug == True:
+            average_hough_image = trimmed_edge_image.copy()
+            average_hough_image = cv2.cvtColor(average_hough_image, cv2.COLOR_GRAY2BGR)
            
             cv2.line(average_hough_image, (left_x0, left_y0), (intersection_x, intersection_y), (255, 0, 255), 3)
             cv2.line(average_hough_image, (right_x0, right_y0), (intersection_x, intersection_y), (255, 255, 0), 3)
@@ -190,7 +200,7 @@ class ConeDetector():
             self.debug_mask(img, blurred_image, masked_image, edge_image, triangle_mask, trimmed_edge_image, hough_image, average_hough_image, output_image)
 
         # Return point to track
-        return (tracking_x, tracking_y)
+        return [(tracking_x, tracking_y), (left_x0, left_y0), (right_x0, right_y0), (intersection_x, intersection_y)]
 
     def image_callback(self, image_msg):
         # Apply your imported color segmentation function (cd_color_segmentation) to the image msg here
@@ -209,7 +219,7 @@ class ConeDetector():
         image = self.bridge.imgmsg_to_cv2(image_msg, "bgr8")
 
         # Processes image
-        tracking_point = self.process_image(image, ".",False)
+        tracking_point, left_lane_start, right_lane_start, intersect_point = self.process_image(image, ".",True, False)
         
         # Creates message
         if tracking_point == (0,0):
@@ -224,11 +234,15 @@ class ConeDetector():
 
         # Debug
         cv2.circle(image, tracking_point, 15, (255, 0, 255), -1)
+        cv2.line(image, left_lane_start, intersect_point, (255, 0, 255), 3)
+        cv2.line(image, right_lane_start, intersect_point, (255, 255, 0), 3)
+
         debug_msg = self.bridge.cv2_to_imgmsg(image, "bgr8")
         self.debug_pub.publish(debug_msg)
 
 
 if __name__ == '__main__':
+    # UNCOMMENT FOR LOCAL TESTING
     test = ConeDetector()
     image = cv2.imread("../track_images/lane3/image14.png")
     ConeDetector.process_image(test, image, True, True)
